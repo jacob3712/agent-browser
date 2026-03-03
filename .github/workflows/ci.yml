@@ -83,7 +83,7 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-apple-darwin
-          - os: windows-latest
+          - os: windows-latest-8-cores
             target: x86_64-pc-windows-msvc
 
     steps:
@@ -106,7 +106,7 @@ jobs:
   windows-integration:
     name: Windows Integration Test
     if: github.event_name == 'push'
-    runs-on: windows-latest
+    runs-on: windows-latest-8-cores
     needs: rust-cross
 
     steps:
@@ -234,7 +234,7 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             binary: agent-browser-darwin-arm64
-          - os: windows-latest
+          - os: windows-latest-8-cores
             target: x86_64-pc-windows-msvc
             binary: agent-browser-win32-x64.exe
 
