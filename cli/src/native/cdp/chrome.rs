@@ -16,24 +16,6 @@ impl ChromeProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-
-    /// Wait for Chrome to exit on its own (after Browser.close CDP command),
-    /// falling back to kill() if it doesn't exit within the timeout.
-    /// This allows Chrome to flush cookies and other state to the user-data-dir.
-    pub fn wait_or_kill(&mut self, timeout: Duration) {
-        let start = std::time::Instant::now();
-        let poll_interval = Duration::from_millis(50);
-
-        while start.elapsed() < timeout {
-            match self.child.try_wait() {
-                Ok(Some(_)) => return,
-                Ok(None) => std::thread::sleep(poll_interval),
-                Err(_) => break,
-            }
-        }
-
-        self.kill();
-    }
 }
 
 impl Drop for ChromeProcess {
@@ -120,7 +102,14 @@ fn build_chrome_args(options: &LaunchOptions) -> Result<ChromeArgs, String> {
         "--use-mock-keychain".to_string(),
     ];
 
-    if options.headless {
+    let has_extensions = options
+        .extensions
+        .as_ref()
+        .map_or(false, |exts| !exts.is_empty());
+
+    // Extensions require headed mode in native Chrome (content scripts are not
+    // injected in headless mode).  Skip --headless when extensions are loaded.
+    if options.headless && !has_extensions {
         args.push("--headless=new".to_string());
     }
 
