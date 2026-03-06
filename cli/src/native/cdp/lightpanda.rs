@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -97,7 +98,12 @@ pub fn launch_lightpanda(
         )?,
     };
 
-    let port = options.port.unwrap_or(0);
+    let port = options.port.unwrap_or_else(|| {
+        TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .map(|a| a.port())
+            .unwrap_or(9222)
+    });
     let port_str = port.to_string();
 
     let mut args = vec![

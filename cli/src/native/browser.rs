@@ -56,6 +56,28 @@ pub fn validate_launch_options(
     Ok(())
 }
 
+/// Validates that Chrome-only options are not used with Lightpanda.
+fn validate_lightpanda_options(options: &LaunchOptions) -> Result<(), String> {
+    if options
+        .extensions
+        .as_ref()
+        .map(|e| !e.is_empty())
+        .unwrap_or(false)
+    {
+        return Err("Extensions are not supported with Lightpanda".to_string());
+    }
+    if options.profile.is_some() {
+        return Err("Profiles are not supported with Lightpanda".to_string());
+    }
+    if options.storage_state.is_some() {
+        return Err("Storage state is not supported with Lightpanda".to_string());
+    }
+    if options.allow_file_access {
+        return Err("File access is not supported with Lightpanda".to_string());
+    }
+    Ok(())
+}
+
 /// Converts common error messages into AI-friendly, actionable descriptions.
 pub fn to_ai_friendly_error(error: &str) -> String {
     let lower = error.to_lowercase();
@@ -129,35 +151,56 @@ pub struct BrowserManager {
 }
 
 impl BrowserManager {
-    pub async fn launch(options: LaunchOptions) -> Result<Self, String> {
-        validate_launch_options(
-            options.extensions.as_deref(),
-            false,
-            options.profile.as_deref(),
-            options.storage_state.as_deref(),
-            options.allow_file_access,
-            options.executable_path.as_deref(),
-        )?;
+    pub async fn launch(options: LaunchOptions, engine: Option<&str>) -> Result<Self, String> {
+        let engine = engine.unwrap_or("chrome");
+
+        match engine {
+            "chrome" => {
+                validate_launch_options(
+                    options.extensions.as_deref(),
+                    false,
+                    options.profile.as_deref(),
+                    options.storage_state.as_deref(),
+                    options.allow_file_access,
+                    options.executable_path.as_deref(),
+                )?;
+            }
+            "lightpanda" => {
+                validate_lightpanda_options(&options)?;
+            }
+            _ => {
+                return Err(format!(
+                    "Unknown engine '{}'. Supported engines: chrome, lightpanda",
+                    engine
+                ));
+            }
+        }
 
         let ignore_https_errors = options.ignore_https_errors;
         let user_agent = options.user_agent.clone();
         let color_scheme = options.color_scheme.clone();
         let download_path = options.download_path.clone();
 
-        let engine = options.engine.as_deref().unwrap_or("chrome");
-        let (ws_url, process) = if engine == "lightpanda" {
-            let lp_options = LightpandaLaunchOptions {
-                executable_path: options.executable_path.clone(),
-                proxy: options.proxy.clone(),
-                port: None,
-            };
-            let lp = launch_lightpanda(&lp_options)?;
-            let url = lp.ws_url.clone();
-            (url, BrowserProcess::Lightpanda(lp))
-        } else {
-            let chrome = launch_chrome(&options)?;
-            let url = chrome.ws_url.clone();
-            (url, BrowserProcess::Chrome(chrome))
+        let (ws_url, process) = match engine {
+            "lightpanda" => {
+                let lp_options = LightpandaLaunchOptions {
+                    executable_path: options.executable_path.clone(),
+                    proxy: options.proxy.clone(),
+                    port: None,
+                };
+                let lp = tokio::task::spawn_blocking(move || launch_lightpanda(&lp_options))
+                    .await
+                    .map_err(|e| format!("Lightpanda launch task failed: {}", e))??;
+                let url = lp.ws_url.clone();
+                (url, BrowserProcess::Lightpanda(lp))
+            }
+            _ => {
+                let chrome = tokio::task::spawn_blocking(move || launch_chrome(&options))
+                    .await
+                    .map_err(|e| format!("Chrome launch task failed: {}", e))??;
+                let url = chrome.ws_url.clone();
+                (url, BrowserProcess::Chrome(chrome))
+            }
         };
 
         let client = CdpClient::connect(&ws_url).await?;

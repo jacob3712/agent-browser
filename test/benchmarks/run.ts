@@ -394,10 +394,10 @@ function rpad(s: string, len: number): string {
   return s.padStart(len);
 }
 
-function formatSpeedup(nodeUs: number, nativeUs: number): string {
-  if (nativeUs === 0 && nodeUs === 0) return "  --";
-  if (nativeUs === 0) return "  >>>";
-  const ratio = nodeUs / nativeUs;
+function formatSpeedup(baselineUs: number, candidateUs: number): string {
+  if (candidateUs === 0 && baselineUs === 0) return "  --";
+  if (candidateUs === 0) return "  >>>";
+  const ratio = baselineUs / candidateUs;
   return `${ratio.toFixed(1)}x`;
 }
 
