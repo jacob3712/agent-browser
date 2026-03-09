@@ -829,7 +829,10 @@ async fn e2e_viewport_scale_factor() {
     .await;
     assert_success(&resp);
     let new_dpr = get_data(&resp)["result"].as_f64().unwrap();
-    assert_eq!(new_dpr, 2.0, "devicePixelRatio should be 2 after setting scale factor");
+    assert_eq!(
+        new_dpr, 2.0,
+        "devicePixelRatio should be 2 after setting scale factor"
+    );
 
     // CSS viewport width should still be 1920 (not 3840)
     let resp = execute_command(

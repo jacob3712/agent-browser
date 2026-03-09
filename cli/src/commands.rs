@@ -1891,12 +1891,12 @@ fn parse_set(rest: &[&str], id: &str) -> Result<Value, ParseError> {
                 })?;
             let mut cmd = json!({ "id": id, "action": "viewport", "width": w, "height": h });
             if let Some(scale_str) = rest.get(3) {
-                let scale = scale_str.parse::<f64>().map_err(|_| {
-                    ParseError::MissingArguments {
+                let scale = scale_str
+                    .parse::<f64>()
+                    .map_err(|_| ParseError::MissingArguments {
                         context: "set viewport".to_string(),
                         usage: "set viewport <width> <height> [scale]",
-                    }
-                })?;
+                    })?;
                 cmd["deviceScaleFactor"] = json!(scale);
             }
             Ok(cmd)
