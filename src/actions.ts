@@ -1473,14 +1473,14 @@ async function handleViewport(
       command.height,
       false
     );
-  } else if (command.deviceScaleFactor === 1) {
+  } else {
+    // deviceScaleFactor is 1 or undefined -- clear any previously-set CDP
+    // Emulation.setDeviceMetricsOverride so stale DPR doesn't persist.
     try {
       await browser.clearDeviceMetricsOverride();
     } catch {
       // Ignore if override was never set
     }
-    await browser.setViewport(command.width, command.height);
-  } else {
     await browser.setViewport(command.width, command.height);
   }
 
