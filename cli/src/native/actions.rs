@@ -1183,19 +1183,15 @@ fn handle_cdp_url(state: &DaemonState) -> Result<Value, String> {
 async fn handle_inspect(state: &mut DaemonState) -> Result<Value, String> {
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
 
-    // Reuse existing inspect server if already running
-    if let Some(ref server) = state.inspect_server {
-        let url = format!("http://127.0.0.1:{}", server.port());
-        open_url_in_browser(&url);
-        return Ok(json!({ "opened": true, "url": url }));
+    // Shut down any existing inspect server so we always target the current page
+    if let Some(server) = state.inspect_server.take() {
+        server.shutdown();
     }
 
     let target_id = mgr.active_target_id()?.to_string();
     let chrome_hp = mgr.chrome_host_port().to_string();
     let proxy_handle = mgr.client.inspect_handle();
 
-    // Each DevTools WebSocket connection creates its own CDP session via
-    // Target.attachToTarget, so reconnections always get fresh domain state.
     let server = InspectServer::start(proxy_handle, target_id, chrome_hp).await?;
     let url = format!("http://127.0.0.1:{}", server.port());
     open_url_in_browser(&url);

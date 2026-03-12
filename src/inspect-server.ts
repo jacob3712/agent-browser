@@ -7,9 +7,14 @@ export interface InspectServerOptions {
   chromeWsUrl: string;
 }
 
+let nextAttachId = -1000;
+
 export class InspectServer {
   private httpServer: http.Server;
   private wss: WebSocketServer;
+  private chromeWs: WebSocket | null = null;
+  private sessions = new Map<string, WebSocket>();
+  private pendingAttaches = new Map<number, (sessionId: string | null) => void>();
   private _port: number = 0;
 
   constructor(private options: InspectServerOptions) {
@@ -23,6 +28,7 @@ export class InspectServer {
   }
 
   async start(): Promise<void> {
+    await this.connectChrome();
     return new Promise((resolve, reject) => {
       this.httpServer.listen(0, '127.0.0.1', () => {
         const addr = this.httpServer.address();
@@ -36,8 +42,73 @@ export class InspectServer {
   }
 
   stop(): void {
+    for (const [sessionId, devtoolsWs] of this.sessions) {
+      this.detachSession(sessionId);
+      devtoolsWs.close();
+    }
+    this.sessions.clear();
+    this.chromeWs?.close();
+    this.chromeWs = null;
     this.wss.close();
     this.httpServer.close();
+  }
+
+  private connectChrome(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.options.chromeWsUrl);
+      ws.on('open', () => {
+        this.chromeWs = ws;
+        resolve();
+      });
+      ws.on('error', (err) => {
+        if (!this.chromeWs) {
+          reject(new Error(`Chrome WebSocket connection failed: ${err.message}`));
+        } else {
+          console.error('[inspect] Chrome WebSocket error:', err.message);
+          for (const devtoolsWs of this.sessions.values()) {
+            devtoolsWs.close();
+          }
+          this.sessions.clear();
+        }
+      });
+      ws.on('close', () => {
+        this.chromeWs = null;
+        for (const devtoolsWs of this.sessions.values()) {
+          devtoolsWs.close();
+        }
+        this.sessions.clear();
+      });
+      ws.on('message', (data) => this.handleChromeMessage(data));
+    });
+  }
+
+  private handleChromeMessage(data: unknown): void {
+    try {
+      const text = String(data);
+      const msg = JSON.parse(text);
+
+      // Check if this is a response to a pending attachToTarget request
+      if (msg.id != null && msg.id < 0) {
+        const resolve = this.pendingAttaches.get(msg.id);
+        if (resolve) {
+          this.pendingAttaches.delete(msg.id);
+          resolve(msg.result?.sessionId ?? null);
+          return;
+        }
+      }
+
+      // Route session-scoped messages to the correct DevTools client
+      const sessionId: string | undefined = msg.sessionId;
+      if (!sessionId) return;
+
+      const devtoolsWs = this.sessions.get(sessionId);
+      if (!devtoolsWs || devtoolsWs.readyState !== WebSocket.OPEN) return;
+
+      delete msg.sessionId;
+      devtoolsWs.send(JSON.stringify(msg));
+    } catch (err) {
+      console.error('[inspect] Chrome message handling error:', err);
+    }
   }
 
   private handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -52,49 +123,74 @@ export class InspectServer {
   }
 
   private handleWsConnection(devtoolsWs: WebSocket): void {
-    const chromeWs = new WebSocket(this.options.chromeWsUrl);
-    let sessionId = '';
+    if (!this.chromeWs || this.chromeWs.readyState !== WebSocket.OPEN) {
+      devtoolsWs.close();
+      return;
+    }
 
-    chromeWs.on('open', () => {
-      // Create a dedicated CDP session for this DevTools connection so it gets
-      // fresh domain enablements (DOM.enable, CSS.enable, etc.)
-      const attachMsg = JSON.stringify({
-        id: -1,
-        method: 'Target.attachToTarget',
-        params: { targetId: this.options.targetId, flatten: true },
-      });
-      chromeWs.send(attachMsg);
+    const attachId = nextAttachId--;
+    const attachMsg = JSON.stringify({
+      id: attachId,
+      method: 'Target.attachToTarget',
+      params: { targetId: this.options.targetId, flatten: true },
     });
 
-    chromeWs.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-
-        // Intercept the attachToTarget response to capture the session ID
-        if (msg.id === -1 && msg.result?.sessionId) {
-          sessionId = msg.result.sessionId;
-          return;
+    const attachPromise = new Promise<string | null>((resolve) => {
+      this.pendingAttaches.set(attachId, resolve);
+      this.chromeWs!.send(attachMsg);
+      setTimeout(() => {
+        if (this.pendingAttaches.has(attachId)) {
+          this.pendingAttaches.delete(attachId);
+          resolve(null);
         }
-
-        if (!sessionId) return;
-        if (msg.sessionId !== sessionId) return;
-        delete msg.sessionId;
-        devtoolsWs.send(JSON.stringify(msg));
-      } catch {}
+      }, 5000);
     });
 
-    devtoolsWs.on('message', (data) => {
-      if (!sessionId) return;
-      try {
-        const msg = JSON.parse(data.toString());
-        msg.sessionId = sessionId;
-        chromeWs.send(JSON.stringify(msg));
-      } catch {}
-    });
+    attachPromise.then((sessionId) => {
+      if (!sessionId) {
+        console.error('[inspect] Failed to attach to target');
+        devtoolsWs.close();
+        return;
+      }
 
-    chromeWs.on('close', () => devtoolsWs.close());
-    devtoolsWs.on('close', () => chromeWs.close());
-    chromeWs.on('error', () => devtoolsWs.close());
-    devtoolsWs.on('error', () => chromeWs.close());
+      this.sessions.set(sessionId, devtoolsWs);
+
+      devtoolsWs.on('message', (data) => {
+        if (!this.chromeWs || this.chromeWs.readyState !== WebSocket.OPEN) return;
+        try {
+          const msg = JSON.parse(String(data));
+          msg.sessionId = sessionId;
+          this.chromeWs.send(JSON.stringify(msg));
+        } catch (err) {
+          console.error('[inspect] DevTools message forwarding error:', err);
+        }
+      });
+
+      devtoolsWs.on('close', () => {
+        this.sessions.delete(sessionId);
+        this.detachSession(sessionId);
+      });
+
+      devtoolsWs.on('error', () => {
+        this.sessions.delete(sessionId);
+        this.detachSession(sessionId);
+        devtoolsWs.close();
+      });
+    });
+  }
+
+  private detachSession(sessionId: string): void {
+    if (!this.chromeWs || this.chromeWs.readyState !== WebSocket.OPEN) return;
+    const detachId = nextAttachId--;
+    const detachMsg = JSON.stringify({
+      id: detachId,
+      method: 'Target.detachFromTarget',
+      params: { sessionId },
+    });
+    try {
+      this.chromeWs.send(detachMsg);
+    } catch (err) {
+      console.error('[inspect] Failed to detach session:', err);
+    }
   }
 }

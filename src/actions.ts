@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { exec } from 'node:child_process';
 import type { Page, Frame } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import type { BrowserManager, ScreencastFrame } from './browser.js';
@@ -1604,10 +1605,10 @@ async function handleInspect(
     return { id: command.id, error: 'CDP URL not available (browser may not be launched)' };
   }
 
+  // Shut down any existing inspect server so we always target the current page
   if (inspectServerInstance) {
-    const url = `http://127.0.0.1:${inspectServerInstance.port}`;
-    openUrlInBrowser(url);
-    return successResponse(command.id, { opened: true, url });
+    inspectServerInstance.stop();
+    inspectServerInstance = null;
   }
 
   const stripped = cdpUrl.replace(/^wss?:\/\//, '');
@@ -1643,7 +1644,6 @@ async function handleInspect(
 }
 
 function openUrlInBrowser(url: string): void {
-  const { exec } = require('child_process') as typeof import('child_process');
   const platform = process.platform;
   const cmd =
     platform === 'darwin'

@@ -237,6 +237,7 @@ async fn handle_ws_proxy(
 
     // DevTools -> Chrome: inject sessionId and forward
     let proxy_for_send = proxy.clone();
+    let session_id_for_send = session_id.clone();
     let devtools_to_chrome = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_rx.next().await {
             let text = match msg {
@@ -245,7 +246,7 @@ async fn handle_ws_proxy(
                 _ => continue,
             };
 
-            let injected = inject_session_id(&text, &session_id);
+            let injected = inject_session_id(&text, &session_id_for_send);
             if proxy_for_send.send_raw(injected).await.is_err() {
                 break;
             }
@@ -256,6 +257,14 @@ async fn handle_ws_proxy(
         _ = chrome_to_devtools => {},
         _ = devtools_to_chrome => {},
     }
+
+    // Clean up the CDP session so Chrome doesn't leak attached targets
+    let detach_cmd = format!(
+        r#"{{"id":{},"method":"Target.detachFromTarget","params":{{"sessionId":"{}"}}}}"#,
+        ATTACH_ID.fetch_sub(1, Ordering::SeqCst),
+        session_id
+    );
+    let _ = proxy.send_raw(detach_cmd).await;
 
     Ok(())
 }

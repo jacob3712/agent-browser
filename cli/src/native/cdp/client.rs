@@ -69,11 +69,13 @@ impl CdpClient {
                     Err(_) => continue,
                 };
 
-                // Broadcast raw message for inspect proxy subscribers
-                let _ = raw_tx_clone.send(RawCdpMessage {
-                    text: msg.clone(),
-                    session_id: parsed.session_id.clone(),
-                });
+                // Broadcast raw message for inspect proxy subscribers (skip clone when idle)
+                if raw_tx_clone.receiver_count() > 0 {
+                    let _ = raw_tx_clone.send(RawCdpMessage {
+                        text: msg.clone(),
+                        session_id: parsed.session_id.clone(),
+                    });
+                }
 
                 if let Some(id) = parsed.id {
                     // Response to a command
