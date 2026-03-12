@@ -184,13 +184,17 @@ async fn handle_ws_proxy(
         r#"{{"id":{},"method":"Target.attachToTarget","params":{{"targetId":"{}","flatten":true}}}}"#,
         attach_id, target_id
     );
+
+    // Subscribe BEFORE sending so we don't miss the response (tokio broadcast
+    // receivers only deliver messages to receivers that already exist).
+    let mut raw_rx = proxy.subscribe_raw();
+
     proxy
         .send_raw(attach_cmd)
         .await
         .map_err(|e| format!("Failed to send attachToTarget: {}", e))?;
 
     // Wait for the attachToTarget response to extract the session ID
-    let mut raw_rx = proxy.subscribe_raw();
     let session_id = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         while let Ok(raw_msg) = raw_rx.recv().await {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw_msg.text) {
@@ -220,7 +224,7 @@ async fn handle_ws_proxy(
     let session_id_clone = session_id.clone();
 
     // Chrome -> DevTools: forward messages matching our session, strip sessionId
-    let chrome_to_devtools = tokio::spawn(async move {
+    let mut chrome_to_devtools = tokio::spawn(async move {
         while let Ok(raw_msg) = raw_rx.recv().await {
             if raw_msg.session_id.as_deref() != Some(&session_id_clone) {
                 continue;
@@ -238,7 +242,7 @@ async fn handle_ws_proxy(
     // DevTools -> Chrome: inject sessionId and forward
     let proxy_for_send = proxy.clone();
     let session_id_for_send = session_id.clone();
-    let devtools_to_chrome = tokio::spawn(async move {
+    let mut devtools_to_chrome = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_rx.next().await {
             let text = match msg {
                 Message::Text(t) => t,
@@ -254,8 +258,12 @@ async fn handle_ws_proxy(
     });
 
     tokio::select! {
-        _ = chrome_to_devtools => {},
-        _ = devtools_to_chrome => {},
+        _ = &mut chrome_to_devtools => {
+            devtools_to_chrome.abort();
+        },
+        _ = &mut devtools_to_chrome => {
+            chrome_to_devtools.abort();
+        },
     }
 
     // Clean up the CDP session so Chrome doesn't leak attached targets
