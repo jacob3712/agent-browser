@@ -1114,10 +1114,11 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
                     Ok(json!({ "id": id, "action": "clipboard", "operation": "read" }))
                 }
                 Some("write") => {
-                    let text = rest.get(1).ok_or_else(|| ParseError::MissingArguments {
+                    rest.get(1).ok_or_else(|| ParseError::MissingArguments {
                         context: "clipboard write".to_string(),
                         usage: "clipboard write <text>",
                     })?;
+                    let text = rest[1..].join(" ");
                     Ok(
                         json!({ "id": id, "action": "clipboard", "operation": "write", "text": text }),
                     )
