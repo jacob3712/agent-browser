@@ -3113,7 +3113,7 @@ async fn handle_clipboard(cmd: &Value, state: &DaemonState) -> Result<Value, Str
 
     let session_id = mgr.active_session_id()?.to_string();
 
-    // Meta (Cmd) on macOS, Control on other platforms
+    // cfg! is compile-time; assumes the browser runs on the same OS as the CLI binary.
     let modifier: i32 = if cfg!(target_os = "macos") { 4 } else { 2 };
 
     match action {
@@ -3131,52 +3131,12 @@ async fn handle_clipboard(cmd: &Value, state: &DaemonState) -> Result<Value, Str
             Ok(json!({ "written": text }))
         }
         "copy" => {
-            let params = serde_json::json!({
-                "type": "keyDown",
-                "modifiers": modifier,
-                "key": "c",
-                "code": "KeyC",
-                "windowsVirtualKeyCode": 67,
-                "nativeVirtualKeyCode": 67,
-            });
-            mgr.client
-                .send_command("Input.dispatchKeyEvent", Some(params), Some(&session_id))
-                .await?;
-            let up_params = serde_json::json!({
-                "type": "keyUp",
-                "modifiers": modifier,
-                "key": "c",
-                "code": "KeyC",
-                "windowsVirtualKeyCode": 67,
-                "nativeVirtualKeyCode": 67,
-            });
-            mgr.client
-                .send_command("Input.dispatchKeyEvent", Some(up_params), Some(&session_id))
+            interaction::press_key_with_modifiers(&mgr.client, &session_id, "c", Some(modifier))
                 .await?;
             Ok(json!({ "copied": true }))
         }
         "paste" => {
-            let params = serde_json::json!({
-                "type": "keyDown",
-                "modifiers": modifier,
-                "key": "v",
-                "code": "KeyV",
-                "windowsVirtualKeyCode": 86,
-                "nativeVirtualKeyCode": 86,
-            });
-            mgr.client
-                .send_command("Input.dispatchKeyEvent", Some(params), Some(&session_id))
-                .await?;
-            let up_params = serde_json::json!({
-                "type": "keyUp",
-                "modifiers": modifier,
-                "key": "v",
-                "code": "KeyV",
-                "windowsVirtualKeyCode": 86,
-                "nativeVirtualKeyCode": 86,
-            });
-            mgr.client
-                .send_command("Input.dispatchKeyEvent", Some(up_params), Some(&session_id))
+            interaction::press_key_with_modifiers(&mgr.client, &session_id, "v", Some(modifier))
                 .await?;
             Ok(json!({ "pasted": true }))
         }

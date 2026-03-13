@@ -481,6 +481,12 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
             }
             if let Some(q) = flags.screenshot_quality {
                 cmd["quality"] = json!(q);
+                if flags.screenshot_format.as_deref() != Some("jpeg") {
+                    eprintln!(
+                        "{} --screenshot-quality is ignored for PNG; use --screenshot-format jpeg",
+                        color::warning_indicator()
+                    );
+                }
             }
             if let Some(ref dir) = flags.screenshot_dir {
                 cmd["screenshotDir"] = json!(dir);
