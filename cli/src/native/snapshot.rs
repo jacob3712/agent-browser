@@ -174,12 +174,7 @@ pub async fn take_snapshot(
 
             let root_node = describe
                 .get("node")
-                .ok_or_else(|| {
-                    format!(
-                        "Could not resolve DOM node for selector '{}'",
-                        selector
-                    )
-                })?;
+                .ok_or_else(|| format!("Could not resolve DOM node for selector '{}'", selector))?;
 
             let mut ids = std::collections::HashSet::new();
             collect_backend_node_ids(root_node, &mut ids);
@@ -212,10 +207,7 @@ pub async fn take_snapshot(
         // Mark which tree_nodes belong to the target DOM subtree.
         let in_subtree: Vec<bool> = tree_nodes
             .iter()
-            .map(|n| {
-                n.backend_node_id
-                    .is_some_and(|bid| id_set.contains(&bid))
-            })
+            .map(|n| n.backend_node_id.is_some_and(|bid| id_set.contains(&bid)))
             .collect();
 
         // An AX node is a "top-level" match if it is in the subtree but its
@@ -225,9 +217,7 @@ pub async fn take_snapshot(
             if !in_subtree[idx] {
                 continue;
             }
-            let parent_in_subtree = node
-                .parent_idx
-                .is_some_and(|pidx| in_subtree[pidx]);
+            let parent_in_subtree = node.parent_idx.is_some_and(|pidx| in_subtree[pidx]);
             if !parent_in_subtree {
                 roots.push(idx);
             }
