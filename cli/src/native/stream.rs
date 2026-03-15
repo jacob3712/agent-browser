@@ -87,7 +87,7 @@ impl StreamServer {
     async fn start_inner(
         preferred_port: u16,
         client_slot: Arc<RwLock<Option<Arc<CdpClient>>>>,
-        session_id: String,
+        _session_id: String,
     ) -> Result<(Self, Arc<RwLock<Option<Arc<CdpClient>>>>), String> {
         let addr = format!("127.0.0.1:{}", preferred_port);
         let listener = TcpListener::bind(&addr)
@@ -110,6 +110,7 @@ impl StreamServer {
         let client_slot_clone = client_slot.clone();
         let notify_clone = client_notify.clone();
         let screencasting_clone = screencasting.clone();
+        let cdp_session_clone = cdp_session_id.clone();
 
         // WebSocket accept loop
         tokio::spawn(async move {
@@ -120,7 +121,7 @@ impl StreamServer {
                 client_slot_clone,
                 notify_clone,
                 screencasting_clone,
-                session_id,
+                cdp_session_clone,
             )
             .await;
         });
@@ -213,6 +214,7 @@ impl StreamServer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn accept_loop(
     listener: TcpListener,
     frame_tx: broadcast::Sender<String>,
@@ -220,7 +222,7 @@ async fn accept_loop(
     client_slot: Arc<RwLock<Option<Arc<CdpClient>>>>,
     client_notify: Arc<Notify>,
     screencasting: Arc<Mutex<bool>>,
-    session_id: String,
+    cdp_session_id: Arc<RwLock<Option<String>>>,
 ) {
     while let Ok((stream, addr)) = listener.accept().await {
         let frame_rx = frame_tx.subscribe();
@@ -228,7 +230,7 @@ async fn accept_loop(
         let client_slot = client_slot.clone();
         let client_notify = client_notify.clone();
         let screencasting = screencasting.clone();
-        let sid = session_id.clone();
+        let cdp_session_id = cdp_session_id.clone();
 
         tokio::spawn(async move {
             handle_ws_client(
@@ -239,7 +241,7 @@ async fn accept_loop(
                 client_slot,
                 client_notify,
                 screencasting,
-                sid,
+                cdp_session_id,
             )
             .await;
         });
@@ -255,7 +257,7 @@ async fn handle_ws_client(
     client_slot: Arc<RwLock<Option<Arc<CdpClient>>>>,
     client_notify: Arc<Notify>,
     screencasting: Arc<Mutex<bool>>,
-    _session_id: String,
+    cdp_session_id: Arc<RwLock<Option<String>>>,
 ) {
     let callback =
         |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
@@ -327,10 +329,8 @@ async fn handle_ws_client(
                     Some(Ok(Message::Text(text))) => {
                         let guard = client_slot.read().await;
                         if let Some(ref client) = *guard {
-                            // For input injection, find the active CDP session from the event
-                            // session tracking. Use empty string as fallback since input
-                            // dispatch to the browser-level session still works.
-                            handle_client_message(&text, client.as_ref(), "").await;
+                            let sid = cdp_session_id.read().await;
+                            handle_client_message(&text, client.as_ref(), sid.as_deref()).await;
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
@@ -503,7 +503,7 @@ async fn cdp_event_loop(
     }
 }
 
-async fn handle_client_message(msg: &str, client: &CdpClient, session_id: &str) {
+async fn handle_client_message(msg: &str, client: &CdpClient, session_id: Option<&str>) {
     let parsed: Value = match serde_json::from_str(msg) {
         Ok(v) => v,
         Err(_) => return,
@@ -526,7 +526,7 @@ async fn handle_client_message(msg: &str, client: &CdpClient, session_id: &str) 
                         "deltaY": parsed.get("deltaY").and_then(|v| v.as_f64()).unwrap_or(0.0),
                         "modifiers": parsed.get("modifiers").and_then(|v| v.as_i64()).unwrap_or(0),
                     })),
-                    Some(session_id),
+                    session_id,
                 )
                 .await;
         }
@@ -541,7 +541,7 @@ async fn handle_client_message(msg: &str, client: &CdpClient, session_id: &str) 
                         "text": parsed.get("text"),
                         "modifiers": parsed.get("modifiers").and_then(|v| v.as_i64()).unwrap_or(0),
                     })),
-                    Some(session_id),
+                    session_id,
                 )
                 .await;
         }
@@ -554,7 +554,7 @@ async fn handle_client_message(msg: &str, client: &CdpClient, session_id: &str) 
                         "touchPoints": parsed.get("touchPoints").unwrap_or(&json!([])),
                         "modifiers": parsed.get("modifiers").and_then(|v| v.as_i64()).unwrap_or(0),
                     })),
-                    Some(session_id),
+                    session_id,
                 )
                 .await;
         }
