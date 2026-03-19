@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
+import { Search } from "./search";
 
 export function Header() {
   return (
@@ -52,6 +53,7 @@ export function Header() {
           </Link>
         </div>
         <nav className="flex items-center gap-4">
+          <Search />
           <a
             href="https://github.com/vercel-labs/agent-browser"
             target="_blank"
