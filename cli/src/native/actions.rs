@@ -2999,8 +2999,8 @@ async fn handle_download(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
         .and_then(|v| v.as_str())
         .ok_or("Missing 'path' parameter")?;
 
-    // Resolve to absolute path
-    let dest = if std::path::Path::new(path_str).is_absolute() {
+    // Resolve to absolute path and canonicalize to prevent path traversal
+    let raw_dest = if std::path::Path::new(path_str).is_absolute() {
         PathBuf::from(path_str)
     } else {
         std::env::current_dir()
@@ -3009,7 +3009,7 @@ async fn handle_download(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
     };
 
     // Extract directory and desired filename
-    let download_dir = dest
+    let download_dir = raw_dest
         .parent()
         .ok_or("Invalid download path: no parent directory")?
         .to_path_buf();
@@ -3018,6 +3018,15 @@ async fn handle_download(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
     std::fs::create_dir_all(&download_dir)
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
 
+    // Canonicalize after mkdir so the path actually exists for resolution
+    let download_dir = download_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve download directory: {}", e))?;
+    let dest = download_dir.join(
+        raw_dest
+            .file_name()
+            .ok_or("Invalid download path: no filename")?,
+    );
     let download_dir_str = download_dir
         .to_str()
         .ok_or("Download directory path is not valid UTF-8")?;
@@ -3043,9 +3052,9 @@ async fn handle_download(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
     )
     .await?;
 
-    // Wait for download to complete (30s timeout)
-    let timeout_ms: u64 = 30000;
-    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(timeout_ms);
+    // Wait for download to complete
+    const DOWNLOAD_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(30);
+    let deadline = tokio::time::Instant::now() + DOWNLOAD_TIMEOUT;
     let mut downloaded_guid: Option<String> = None;
 
     loop {
@@ -3094,24 +3103,13 @@ async fn handle_download(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
                 .map_err(|e| format!("Failed to rename downloaded file: {}", e))?;
         }
     } else {
-        // No GUID captured -- try to find the most recently created file in the dir
-        // and rename it to the desired destination
-        if let Ok(entries) = std::fs::read_dir(&download_dir) {
-            let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-            for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        if newest.as_ref().is_none_or(|(t, _)| modified > *t) {
-                            newest = Some((modified, entry.path()));
-                        }
-                    }
-                }
-            }
-            if let Some((_, newest_path)) = newest {
-                if newest_path != dest {
-                    let _ = std::fs::rename(&newest_path, &dest);
-                }
-            }
+        // GUID capture failed — the file may have been saved under its original name
+        // by Chrome. Only rename if dest doesn't already exist (avoid touching
+        // unrelated files in the directory).
+        if !dest.exists() {
+            return Err(
+                "Download completed but could not determine the downloaded file name".to_string(),
+            );
         }
     }
 
