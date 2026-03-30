@@ -225,6 +225,7 @@ pub fn launch_chrome(options: &LaunchOptions) -> Result<ChromeProcess, String> {
                 "Chrome not found. Checked:\n  \
                  - agent-browser cache: {}\n  \
                  - System Chrome installations\n  \
+                 - Puppeteer browser cache\n  \
                  - Playwright browser cache\n\
                  Run `agent-browser install` to download Chrome, or use --executable-path.",
                 cache_dir.display()
@@ -522,7 +523,10 @@ pub fn find_chrome() -> Option<PathBuf> {
         }
     }
 
-    // 3. Fallback: check Playwright's browser cache (for existing installs)
+    // 3. Fallback: check Puppeteer / Playwright browser caches
+    if let Some(p) = find_puppeteer_chrome() {
+        return Some(p);
+    }
     if let Some(p) = find_playwright_chromium() {
         return Some(p);
     }
@@ -702,6 +706,74 @@ fn should_disable_dev_shm(existing_args: &[String]) -> bool {
     }
 
     false
+}
+
+/// Search Puppeteer's browser cache for a Chrome binary.
+/// Puppeteer v19+ stores Chrome in ~/.cache/puppeteer/chrome/<platform>-<version>/
+fn find_puppeteer_chrome() -> Option<PathBuf> {
+    let mut search_dirs = Vec::new();
+
+    if let Ok(custom) = std::env::var("PUPPETEER_CACHE_DIR") {
+        search_dirs.push(PathBuf::from(custom).join("chrome"));
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        search_dirs.push(home.join(".cache/puppeteer/chrome"));
+    }
+
+    for dir in &search_dirs {
+        if !dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut matches: Vec<PathBuf> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .filter_map(|e| {
+                    let candidate = build_puppeteer_binary_path(&e.path());
+                    if candidate.exists() {
+                        Some(candidate)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            matches.sort();
+            matches.reverse();
+            if let Some(p) = matches.into_iter().next() {
+                return Some(p);
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn build_puppeteer_binary_path(version_dir: &Path) -> PathBuf {
+    version_dir.join("chrome-linux64/chrome")
+}
+
+#[cfg(target_os = "macos")]
+fn build_puppeteer_binary_path(version_dir: &Path) -> PathBuf {
+    // Puppeteer uses chrome-mac-arm64 or chrome-mac-x64 depending on arch
+    let arm = version_dir
+        .join("chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing");
+    if arm.exists() {
+        return arm;
+    }
+    version_dir
+        .join("chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
+}
+
+#[cfg(target_os = "windows")]
+fn build_puppeteer_binary_path(version_dir: &Path) -> PathBuf {
+    version_dir.join(r"chrome-win64\chrome.exe")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn build_puppeteer_binary_path(version_dir: &Path) -> PathBuf {
+    version_dir.join("chrome")
 }
 
 /// Search Playwright's browser cache for a Chromium binary.
