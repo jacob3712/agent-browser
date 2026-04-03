@@ -613,12 +613,11 @@ mod agentcore {
             host, amz_date
         );
 
-        if session_token.is_some() {
+        if let Some(ref token) = session_token {
             signed_headers = "content-type;host;x-amz-date;x-amz-security-token".to_string();
-            canonical_headers =
-                format!(
+            canonical_headers = format!(
                 "content-type:application/json\nhost:{}\nx-amz-date:{}\nx-amz-security-token:{}\n",
-                host, amz_date, session_token.as_ref().unwrap()
+                host, amz_date, token
             );
         }
 
