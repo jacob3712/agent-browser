@@ -19,6 +19,11 @@
 - Fixed **`auto_launch()`** not honouring `AGENT_BROWSER_PROVIDER` for cloud providers, causing non-launch commands to fall back to local Chrome instead of connecting via the provider API (#1126)
 - Fixed **HAR capture missing API requests** under heavy traffic by increasing the CDP broadcast buffer from 256 to 4096 events, reducing the drain interval from 500ms to 100ms, and enabling network tracking in cross-origin iframes (#1135)
 
+### Tests
+
+- Fixed **`e2e_relaunch_on_options_change`** launching headed Chrome on CI where no display is available. The test now stays headless and only changes extensions to trigger the relaunch (#996)
+- Fixed **`e2e_auth_login`** flake by reducing the SPA render delay from 1200ms to 800ms, giving more headroom within the selector wait window on slower CI runners
+
 ### Contributors
 
 - @ctate
