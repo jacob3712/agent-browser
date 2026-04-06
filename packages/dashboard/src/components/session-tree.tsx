@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useAtom } from "jotai/react";
 import { useAtomValue, useSetAtom } from "jotai/react";
 import type { SessionInfo, TabInfo } from "@/types";
 import {
@@ -13,6 +14,7 @@ import {
   closeTabAtom,
   addTabAtom,
   switchTabAtom,
+  newSessionDialogAtom,
 } from "@/store/sessions";
 import { tabsForPortAtom, engineForPortAtom } from "@/store/tabs";
 import { ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
@@ -348,7 +350,7 @@ export function SessionTree() {
   const dispatchSwitchTab = useSetAtom(switchTabAtom);
 
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
-  const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [newSessionOpen, setNewSessionOpen] = useAtom(newSessionDialogAtom);
   const [closeAllOpen, setCloseAllOpen] = useState(false);
   const [newSessionName, setNewSessionName] = useState("");
   const [newSessionBrowser, setNewSessionBrowser] = useState("chrome");
@@ -384,6 +386,15 @@ export function SessionTree() {
       setNewSessionOpen(false);
     }
   }, [newSessionName, newSessionBrowser, creating, dispatchCreateSession]);
+
+  useEffect(() => {
+    if (newSessionOpen && !newSessionName) {
+      const existing = new Set(sessions.map((s) => s.session));
+      let n = sessions.length + 1;
+      while (existing.has(`session-${n}`)) n++;
+      setNewSessionName(`session-${n}`);
+    }
+  }, [newSessionOpen, newSessionName, sessions]);
 
   return (
     <div className="flex h-full flex-col">

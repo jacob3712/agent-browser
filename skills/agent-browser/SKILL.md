@@ -25,7 +25,7 @@ agent-browser snapshot -i
 agent-browser fill @e1 "user@example.com"
 agent-browser fill @e2 "password123"
 agent-browser click @e3
-agent-browser wait --load networkidle
+agent-browser wait 2000
 agent-browser snapshot -i  # Check result
 ```
 
@@ -34,14 +34,14 @@ agent-browser snapshot -i  # Check result
 Commands can be chained with `&&` in a single shell invocation. The browser persists between commands via a background daemon, so chaining is safe and more efficient than separate calls.
 
 ```bash
-# Chain open + wait + snapshot in one call
-agent-browser open https://example.com && agent-browser wait --load networkidle && agent-browser snapshot -i
+# Chain open + snapshot in one call (open already waits for page load)
+agent-browser open https://example.com && agent-browser snapshot -i
 
 # Chain multiple interactions
 agent-browser fill @e1 "user@example.com" && agent-browser fill @e2 "password123" && agent-browser click @e3
 
 # Navigate and capture
-agent-browser open https://example.com && agent-browser wait --load networkidle && agent-browser screenshot page.png
+agent-browser open https://example.com && agent-browser screenshot
 ```
 
 **When to chain:** Use `&&` when you don't need to read the output of an intermediate command before proceeding (e.g., open + wait + screenshot). Run commands separately when you need to parse the output first (e.g., snapshot to discover refs, then interact using those refs).
@@ -129,6 +129,7 @@ agent-browser close --all             # Close all active sessions
 
 # Snapshot
 agent-browser snapshot -i             # Interactive elements with refs (recommended)
+agent-browser snapshot -i --urls      # Include href URLs for links
 agent-browser snapshot -s "#selector" # Scope to CSS selector
 
 # Interaction (use @refs from snapshot)
@@ -152,9 +153,9 @@ agent-browser get cdp-url             # Get CDP WebSocket URL
 
 # Wait
 agent-browser wait @e1                # Wait for element
-agent-browser wait --load networkidle # Wait for network idle
-agent-browser wait --url "**/page"    # Wait for URL pattern
 agent-browser wait 2000               # Wait milliseconds
+agent-browser wait --url "**/page"    # Wait for URL pattern
+agent-browser wait --text "Welcome"   # Wait for text to appear
 agent-browser wait --text "Welcome"    # Wait for text to appear (substring match)
 agent-browser wait --fn "!document.body.innerText.includes('Loading...')"  # Wait for text to disappear
 agent-browser wait "#spinner" --state hidden  # Wait for element to disappear
@@ -256,6 +257,28 @@ echo '[["open","https://example.com"],["screenshot"]]' | agent-browser batch --j
 agent-browser batch --bail < commands.json
 ```
 
+## Efficiency Strategies
+
+These patterns minimize tool calls and token usage.
+
+**Use `--urls` to avoid re-navigation.** When you need to visit links from a page, use `snapshot -i --urls` to get all href URLs upfront. Then `open` each URL directly instead of clicking refs and navigating back.
+
+**Snapshot once, act many times.** Never re-snapshot the same page. Extract all needed info (refs, URLs, text) from a single snapshot, then batch the remaining actions.
+
+**Multi-page workflow (e.g. "visit N sites and screenshot each"):**
+
+```bash
+# 1. Get all URLs in one call
+agent-browser batch "open https://news.ycombinator.com" "snapshot -i --urls"
+# Read output to extract URLs, then visit each directly:
+# 2. One batch per target site
+agent-browser batch "open https://github.com/example/repo" "screenshot"
+agent-browser batch "open https://example.com/article" "screenshot"
+agent-browser batch "open https://other.com/page" "screenshot"
+```
+
+This approach uses 4 tool calls instead of 14+. Never go back to the listing page between visits.
+
 ## Common Patterns
 
 ### Form Submission
@@ -264,7 +287,7 @@ agent-browser batch --bail < commands.json
 # Navigate and get the form structure
 agent-browser batch "open https://example.com/signup" "snapshot -i"
 # Read the snapshot output to identify form refs, then fill and submit
-agent-browser batch "fill @e1 \"Jane Doe\"" "fill @e2 \"jane@example.com\"" "select @e3 \"California\"" "check @e4" "click @e5" "wait --load networkidle"
+agent-browser batch "fill @e1 \"Jane Doe\"" "fill @e2 \"jane@example.com\"" "select @e3 \"California\"" "check @e4" "click @e5" "wait 2000"
 ```
 
 ### Authentication with Auth Vault (Recommended)
@@ -538,27 +561,29 @@ agent-browser diff url https://staging.example.com https://prod.example.com --sc
 
 ## Timeouts and Slow Pages
 
-The default timeout is 25 seconds. This can be overridden with the `AGENT_BROWSER_DEFAULT_TIMEOUT` environment variable (value in milliseconds). For slow websites or large pages, use explicit waits instead of relying on the default timeout:
+The default timeout is 25 seconds. This can be overridden with the `AGENT_BROWSER_DEFAULT_TIMEOUT` environment variable (value in milliseconds).
+
+**Important:** `open` already waits for the page `load` event before returning. In most cases, no additional wait is needed before taking a snapshot or screenshot. Only add an explicit wait when content loads asynchronously after the initial page load.
 
 ```bash
-# Wait for network activity to settle (best for slow pages)
-agent-browser wait --load networkidle
-
-# Wait for a specific element to appear
+# Wait for a specific element to appear (preferred for dynamic content)
 agent-browser wait "#content"
 agent-browser wait @e1
+
+# Wait a fixed duration (good default for slow SPAs)
+agent-browser wait 2000
 
 # Wait for a specific URL pattern (useful after redirects)
 agent-browser wait --url "**/dashboard"
 
-# Wait for a JavaScript condition
-agent-browser wait --fn "document.readyState === 'complete'"
+# Wait for text to appear on the page
+agent-browser wait --text "Results loaded"
 
-# Wait a fixed duration (milliseconds) as a last resort
-agent-browser wait 5000
+# Wait for a JavaScript condition
+agent-browser wait --fn "document.querySelectorAll('.item').length > 0"
 ```
 
-When dealing with consistently slow websites, use `wait --load networkidle` after `open` to ensure the page is fully loaded before taking a snapshot. If a specific element is slow to render, wait for it directly with `wait <selector>` or `wait @ref`.
+**Avoid `wait --load networkidle`** unless you are certain the site has no persistent network activity. Ad-heavy sites, sites with analytics/tracking, and sites with websockets will cause `networkidle` to hang indefinitely. Prefer `wait 2000` or `wait <selector>` instead.
 
 ## JavaScript Dialogs (alert / confirm / prompt)
 
@@ -777,12 +802,12 @@ The dashboard runs independently of browser sessions on port 4848 (configurable 
 The dashboard has an optional AI chat tab powered by the Vercel AI Gateway. Enable it by setting:
 
 ```bash
-export AGENT_BROWSER_AI_API_KEY=gw_your_key_here
-export AGENT_BROWSER_AI_MODEL=anthropic/claude-haiku-4.5           # optional default
-export AGENT_BROWSER_AI_GATEWAY_URL=https://ai-gateway.vercel.sh   # optional default
+export AI_GATEWAY_API_KEY=gw_your_key_here
+export AI_GATEWAY_MODEL=anthropic/claude-sonnet-4.6           # optional default
+export AI_GATEWAY_URL=https://ai-gateway.vercel.sh           # optional default
 ```
 
-The Chat tab is always visible in the dashboard. Set `AGENT_BROWSER_AI_API_KEY` to enable AI responses.
+The Chat tab is always visible in the dashboard. Set `AI_GATEWAY_API_KEY` to enable AI responses.
 
 ## Ready-to-Use Templates
 

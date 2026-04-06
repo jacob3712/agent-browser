@@ -17,6 +17,8 @@ function getPort(): number {
 
 const DASHBOARD_PORT = 4848;
 
+export const newSessionDialogAtom = atom(false);
+
 function getSessionsUrl(): string {
   if (typeof window !== "undefined") {
     const origin = window.location.origin;

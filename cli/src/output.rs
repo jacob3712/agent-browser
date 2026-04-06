@@ -1544,6 +1544,7 @@ Designed for AI agents to understand page structure.
 
 Options:
   -i, --interactive    Only include interactive elements
+  -u, --urls           Include href URLs for link elements
   -c, --compact        Remove empty structural elements
   -d, --depth <n>      Limit tree depth
   -s, --selector <sel> Scope snapshot to CSS selector
@@ -1555,6 +1556,7 @@ Global Options:
 Examples:
   agent-browser snapshot
   agent-browser snapshot -i
+  agent-browser snapshot -i --urls
   agent-browser snapshot --compact --depth 5
   agent-browser snapshot -s "#main-content"
 "##
@@ -2917,9 +2919,9 @@ Environment:
   AGENT_BROWSER_SCREENSHOT_DIR   Default screenshot output directory
   AGENT_BROWSER_SCREENSHOT_QUALITY JPEG quality 0-100
   AGENT_BROWSER_SCREENSHOT_FORMAT Screenshot format: png, jpeg
-  AGENT_BROWSER_AI_GATEWAY_URL   Vercel AI Gateway base URL (default: https://ai-gateway.vercel.sh)
-  AGENT_BROWSER_AI_API_KEY       API key for the AI Gateway (enables dashboard AI chat)
-  AGENT_BROWSER_AI_MODEL         Default AI model (default: anthropic/claude-haiku-4.5)
+  AI_GATEWAY_URL                 Vercel AI Gateway base URL (default: https://ai-gateway.vercel.sh)
+  AI_GATEWAY_API_KEY             API key for the AI Gateway (enables dashboard AI chat)
+  AI_GATEWAY_MODEL               Default AI model (default: anthropic/claude-sonnet-4.6)
 
 Install:
   npm install -g agent-browser           # npm
@@ -2936,7 +2938,7 @@ Examples:
   agent-browser get text @e1
   agent-browser screenshot --full
   agent-browser screenshot --annotate    # Labeled screenshot for vision models
-  agent-browser wait --load networkidle  # Wait for slow pages to load
+  agent-browser wait 2000               # Wait for slow pages to settle
   agent-browser --cdp 9222 snapshot      # Connect via CDP port
   agent-browser --auto-connect snapshot  # Auto-discover running Chrome
   agent-browser stream enable            # Start runtime streaming on an auto-selected port
@@ -2950,9 +2952,9 @@ Examples:
 Command Chaining:
   Chain commands with && in a single shell call (browser persists via daemon):
 
-  agent-browser open example.com && agent-browser wait --load networkidle && agent-browser snapshot -i
+  agent-browser open example.com && agent-browser snapshot -i
   agent-browser fill @e1 "user@example.com" && agent-browser fill @e2 "pass" && agent-browser click @e3
-  agent-browser open example.com && agent-browser wait --load networkidle && agent-browser screenshot page.png
+  agent-browser open example.com && agent-browser screenshot
 
 iOS Simulator (requires Xcode and Appium):
   agent-browser -p ios open example.com                    # Use default iPhone

@@ -145,15 +145,15 @@ The dashboard includes an optional AI chat panel powered by the [Vercel AI Gatew
 The Chat tab is always visible. Set the API key to enable responses:
 
 ```bash
-export AGENT_BROWSER_AI_API_KEY=gw_your_key_here
+export AI_GATEWAY_API_KEY=gw_your_key_here
 agent-browser dashboard start
 ```
 
 Optionally override the gateway URL or model:
 
 ```bash
-export AGENT_BROWSER_AI_GATEWAY_URL=https://ai-gateway.vercel.sh   # this is the default
-export AGENT_BROWSER_AI_MODEL=openai/gpt-4o-mini                   # default: anthropic/claude-haiku-4.5
+export AI_GATEWAY_URL=https://ai-gateway.vercel.sh   # this is the default
+export AI_GATEWAY_MODEL=openai/gpt-4o-mini           # default: anthropic/claude-sonnet-4.6
 ```
 
 ### How it works
@@ -165,8 +165,8 @@ The Rust server proxies chat requests from the dashboard to the Vercel AI Gatewa
     <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>AGENT_BROWSER_AI_GATEWAY_URL</code></td><td>Vercel AI Gateway base URL.</td><td><code>https://ai-gateway.vercel.sh</code></td></tr>
-    <tr><td><code>AGENT_BROWSER_AI_API_KEY</code></td><td>API key for the AI Gateway. Required to enable AI chat responses.</td><td>(none)</td></tr>
-    <tr><td><code>AGENT_BROWSER_AI_MODEL</code></td><td>Default AI model for chat requests.</td><td><code>anthropic/claude-haiku-4.5</code></td></tr>
+    <tr><td><code>AI_GATEWAY_URL</code></td><td>Vercel AI Gateway base URL.</td><td><code>https://ai-gateway.vercel.sh</code></td></tr>
+    <tr><td><code>AI_GATEWAY_API_KEY</code></td><td>API key for the AI Gateway. Required to enable AI chat responses.</td><td>(none)</td></tr>
+    <tr><td><code>AI_GATEWAY_MODEL</code></td><td>Default AI model for chat requests.</td><td><code>anthropic/claude-sonnet-4.6</code></td></tr>
   </tbody>
 </table>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useAtomValue } from "jotai/react";
-import { activePortAtom, sessionsAtom } from "@/store/sessions";
+import { useAtomValue, useSetAtom } from "jotai/react";
+import { activePortAtom, sessionsAtom, newSessionDialogAtom } from "@/store/sessions";
 import { useSessionsSync } from "@/store/sessions";
 import { useStreamSync, hasConsoleErrorsAtom, consoleLogsAtom } from "@/store/stream";
 import { useActivitySync } from "@/store/activity";
@@ -22,6 +22,8 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 export default function DashboardPage() {
   const activePort = useAtomValue(activePortAtom);
@@ -32,6 +34,7 @@ export default function DashboardPage() {
 
   const sessions = useAtomValue(sessionsAtom);
   const hasSessions = sessions.length > 0;
+  const setNewSessionDialog = useSetAtom(newSessionDialogAtom);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const hasConsoleErrors = useAtomValue(hasConsoleErrorsAtom);
   const activeExtensions = useAtomValue(activeExtensionsAtom);
@@ -93,9 +96,18 @@ export default function DashboardPage() {
             <ResizableHandle />
             <ResizablePanel id="empty" defaultSize="85%">
               <div className="flex h-full items-center justify-center">
-                <div className="text-center space-y-2">
-                  <p className="text-sm text-muted-foreground">No active sessions</p>
-                  <p className="text-xs text-muted-foreground/60">Create a session to get started</p>
+                <div className="text-center space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">No active sessions</p>
+                    <p className="text-xs text-muted-foreground/60">Create a session to get started</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setNewSessionDialog(true)}
+                  >
+                    <Plus className="size-3.5" />
+                    New session
+                  </Button>
                 </div>
               </div>
             </ResizablePanel>

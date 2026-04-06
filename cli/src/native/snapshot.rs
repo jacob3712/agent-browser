@@ -80,6 +80,7 @@ pub struct SnapshotOptions {
     pub interactive: bool,
     pub compact: bool,
     pub depth: Option<usize>,
+    pub urls: bool,
 }
 
 struct TreeNode {
@@ -98,7 +99,8 @@ struct TreeNode {
     has_ref: bool,
     ref_id: Option<String>,
     depth: usize,
-    cursor_info: Option<CursorElementInfo>, // cursor-interactive information
+    cursor_info: Option<CursorElementInfo>,
+    url: Option<String>,
 }
 
 impl TreeNode {
@@ -121,10 +123,10 @@ impl TreeNode {
             ref_id: None,
             depth: 0,
             cursor_info: None,
+            url: None,
         }
     }
 
-    // Clear node content
     fn clear(&mut self) {
         self.role = String::new();
         self.name = String::new();
@@ -139,6 +141,7 @@ impl TreeNode {
         self.children.clear();
         self.parent_idx = None;
         self.has_ref = false;
+        self.url = None;
         self.ref_id = None;
         self.depth = 0;
         self.cursor_info = None;
@@ -382,6 +385,78 @@ pub async fn take_snapshot(
     }
 
     ref_map.set_next_ref_num(next_ref);
+
+    if options.urls {
+        let link_bids: Vec<i64> = tree_nodes
+            .iter()
+            .filter(|n| n.role == "link" && n.has_ref && n.backend_node_id.is_some())
+            .filter_map(|n| n.backend_node_id)
+            .collect();
+
+        if !link_bids.is_empty() {
+            let js = format!(
+                r#"(() => {{
+                    const bids = {};
+                    const map = {{}};
+                    const links = document.querySelectorAll('a[href]');
+                    for (const a of links) {{
+                        map[a.href] = map[a.href] || a;
+                    }}
+                    return JSON.stringify(
+                        bids.reduce((acc, bid) => {{ acc[bid] = null; return acc; }}, {{}})
+                    );
+                }})()"#,
+                serde_json::to_string(&link_bids).unwrap_or_default()
+            );
+            let _ = js; // DOM approach is more reliable; resolve per-node
+
+            for node in tree_nodes.iter_mut() {
+                if node.role != "link" || !node.has_ref {
+                    continue;
+                }
+                let Some(bid) = node.backend_node_id else {
+                    continue;
+                };
+                if let Ok(resolved) = client
+                    .send_command(
+                        "DOM.resolveNode",
+                        Some(serde_json::json!({ "backendNodeId": bid })),
+                        Some(session_id),
+                    )
+                    .await
+                {
+                    if let Some(object_id) = resolved
+                        .get("object")
+                        .and_then(|o| o.get("objectId"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if let Ok(result) = client
+                            .send_command(
+                                "Runtime.callFunctionOn",
+                                Some(serde_json::json!({
+                                    "objectId": object_id,
+                                    "functionDeclaration": "function() { return this.href || ''; }",
+                                    "returnByValue": true,
+                                })),
+                                Some(session_id),
+                            )
+                            .await
+                        {
+                            if let Some(href) = result
+                                .get("result")
+                                .and_then(|r| r.get("value"))
+                                .and_then(|v| v.as_str())
+                            {
+                                if !href.is_empty() {
+                                    node.url = Some(href.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let mut output = String::new();
     for &root_idx in &effective_roots {
@@ -797,6 +872,7 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
             ref_id: None,
             depth: 0,
             cursor_info: None,
+            url: None,
         });
         id_to_idx.insert(node.node_id.clone(), i);
     }
@@ -991,6 +1067,10 @@ fn render_tree(
 
     if let Some(ref ref_id) = node.ref_id {
         attrs.push(format!("ref={}", ref_id));
+    }
+
+    if let Some(ref url) = node.url {
+        attrs.push(format!("url={}", url));
     }
 
     if !attrs.is_empty() {

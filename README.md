@@ -551,6 +551,7 @@ The `snapshot` command supports filtering to reduce output size:
 ```bash
 agent-browser snapshot                    # Full accessibility tree
 agent-browser snapshot -i                 # Interactive elements only (buttons, inputs, links)
+agent-browser snapshot -i --urls          # Interactive elements with link URLs
 agent-browser snapshot -c                 # Compact (remove empty structural elements)
 agent-browser snapshot -d 3               # Limit depth to 3 levels
 agent-browser snapshot -s "#main"         # Scope to CSS selector
@@ -560,6 +561,7 @@ agent-browser snapshot -i -c -d 5         # Combine options
 | Option                 | Description                                                             |
 | ---------------------- | ----------------------------------------------------------------------- |
 | `-i, --interactive`    | Only show interactive elements (buttons, links, inputs)                 |
+| `-u, --urls`           | Include href URLs for link elements                                     |
 | `-c, --compact`        | Remove empty structural elements                                        |
 | `-d, --depth <n>`      | Limit tree depth                                                        |
 | `-s, --selector <sel>` | Scope to CSS selector                                                   |
@@ -660,12 +662,12 @@ The dashboard displays:
 The dashboard includes an optional AI chat panel powered by the Vercel AI Gateway. Set these environment variables to enable it:
 
 ```bash
-export AGENT_BROWSER_AI_API_KEY=gw_your_key_here
-export AGENT_BROWSER_AI_MODEL=anthropic/claude-haiku-4.5           # optional, this is the default
-export AGENT_BROWSER_AI_GATEWAY_URL=https://ai-gateway.vercel.sh   # optional, this is the default
+export AI_GATEWAY_API_KEY=gw_your_key_here
+export AI_GATEWAY_MODEL=anthropic/claude-sonnet-4.6           # optional, this is the default
+export AI_GATEWAY_URL=https://ai-gateway.vercel.sh           # optional, this is the default
 ```
 
-The Chat tab is always visible in the dashboard. When `AGENT_BROWSER_AI_API_KEY` is set, the Rust server proxies requests to the gateway and streams responses back using the Vercel AI SDK's UI Message Stream protocol. Without the key, sending a message shows an error inline.
+The Chat tab is always visible in the dashboard. When `AI_GATEWAY_API_KEY` is set, the Rust server proxies requests to the gateway and streams responses back using the Vercel AI SDK's UI Message Stream protocol. Without the key, sending a message shows an error inline.
 
 ## Configuration
 

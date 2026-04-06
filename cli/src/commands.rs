@@ -552,8 +552,10 @@ fn parse_command_inner(args: &[String], flags: &Flags) -> Result<Value, ParseErr
                         obj.insert("compact".to_string(), json!(true));
                     }
                     "-C" | "--cursor" => {
-                        // deprecated, cursor-interactive elements are referred by default now
                         obj.insert("cursor".to_string(), json!(true));
+                    }
+                    "-u" | "--urls" => {
+                        obj.insert("urls".to_string(), json!(true));
                     }
                     "-d" | "--depth" => {
                         if let Some(d) = rest.get(i + 1) {
@@ -3008,6 +3010,21 @@ mod tests {
         let cmd = parse_command(&args("snapshot -d 3"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "snapshot");
         assert_eq!(cmd["maxDepth"], 3);
+    }
+
+    #[test]
+    fn test_snapshot_urls() {
+        let cmd = parse_command(&args("snapshot -i --urls"), &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "snapshot");
+        assert_eq!(cmd["interactive"], true);
+        assert_eq!(cmd["urls"], true);
+    }
+
+    #[test]
+    fn test_snapshot_urls_short() {
+        let cmd = parse_command(&args("snapshot -i -u"), &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "snapshot");
+        assert_eq!(cmd["urls"], true);
     }
 
     // === Wait ===

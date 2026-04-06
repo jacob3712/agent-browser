@@ -14,6 +14,12 @@ import { cn } from "@/lib/utils";
 import { ArrowUp, Square, Trash2, ChevronRight, ImagePlus, X, Loader, Copy, Check, Download } from "lucide-react";
 
 const chatComponents = {
+  img: ({ node: _node, src, alt, ...props }: any) => {
+    if (typeof src === "string" && src.startsWith("data:image/")) {
+      return <img src={src} alt={alt} className="rounded-md border border-border max-w-full my-1" {...props} />;
+    }
+    return null;
+  },
   h1: ({ node: _node, ...props }: any) => <p className="font-bold" {...props} />,
   h2: ({ node: _node, ...props }: any) => <p className="font-bold" {...props} />,
   h3: ({ node: _node, ...props }: any) => <p className="font-bold" {...props} />,
@@ -55,7 +61,7 @@ const chatComponents = {
 const STORAGE_PREFIX = "dashboard-chat-";
 
 const SUGGESTIONS = [
-  "Go to google.com",
+  "Go to vercel.com",
   "Take a screenshot",
   "What's on the page?",
   "Click the first link",
@@ -119,7 +125,7 @@ function extractImageUrl(raw: unknown): string | null {
   return null;
 }
 
-function ToolCallBlock({ part }: { part: ToolInvocationPart }) {
+function ToolCallBlock({ part, onImageLoad }: { part: ToolInvocationPart; onImageLoad?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const toolName = part.type.split("-").slice(1).join("-");
   const command = (part.input as { command?: string })?.command ?? toolName;
@@ -171,6 +177,7 @@ function ToolCallBlock({ part }: { part: ToolInvocationPart }) {
           src={imageUrl}
           alt="Screenshot"
           className="rounded-md border border-border max-w-full"
+          onLoad={onImageLoad}
         />
       )}
     </div>
@@ -232,7 +239,7 @@ function ContextMeter({ used, total }: { used: number; total: number }) {
   );
 }
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 function useTimeAgo(ts: number | undefined) {
   const [, setTick] = useState(0);
@@ -366,9 +373,13 @@ export function ChatPanel() {
     inputRef.current?.focus();
   }, []);
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, visibleError]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, visibleError, scrollToBottom]);
 
   // Restore messages from sessionStorage when chatId changes
   useEffect(() => {
@@ -610,7 +621,7 @@ export function ChatPanel() {
                             <div key={gi} className="space-y-0.5">
                               {group.items.map((part) => {
                                 if (!isToolPart(part)) return null;
-                                return <ToolCallBlock key={part.toolCallId} part={part} />;
+                                return <ToolCallBlock key={part.toolCallId} part={part} onImageLoad={scrollToBottom} />;
                               })}
                             </div>
                           );
