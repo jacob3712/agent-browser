@@ -155,8 +155,8 @@ agent-browser get cdp-url             # Get CDP WebSocket URL
 agent-browser wait @e1                # Wait for element
 agent-browser wait 2000               # Wait milliseconds
 agent-browser wait --url "**/page"    # Wait for URL pattern
-agent-browser wait --text "Welcome"   # Wait for text to appear
-agent-browser wait --text "Welcome"    # Wait for text to appear (substring match)
+agent-browser wait --text "Welcome"   # Wait for text to appear (substring match)
+agent-browser wait --load networkidle # Wait for network idle (caution: see Pitfalls)
 agent-browser wait --fn "!document.body.innerText.includes('Loading...')"  # Wait for text to disappear
 agent-browser wait "#spinner" --state hidden  # Wait for element to disappear
 

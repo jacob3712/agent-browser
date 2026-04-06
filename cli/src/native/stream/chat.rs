@@ -66,11 +66,44 @@ pub(super) async fn handle_models_request(stream: &mut tokio::net::TcpStream) {
     let _ = stream.write_all(body.as_bytes()).await;
 }
 
-const SKILL_AGENT_BROWSER: &str = include_str!("../../../../skills/agent-browser/SKILL.md");
-const SKILL_SLACK: &str = include_str!("../../../../skills/slack/SKILL.md");
-const SKILL_ELECTRON: &str = include_str!("../../../../skills/electron/SKILL.md");
-const SKILL_DOGFOOD: &str = include_str!("../../../../skills/dogfood/SKILL.md");
-const SKILL_AGENTCORE: &str = include_str!("../../../../skills/agentcore/SKILL.md");
+const SKILL_NAMES: &[&str] = &[
+    "agent-browser",
+    "slack",
+    "electron",
+    "dogfood",
+    "agentcore",
+];
+
+/// Locate the `skills/` directory by walking up from the executable.
+/// Works for npm installs (binary in `bin/`, skills at `../skills/`) and
+/// dev builds (binary deep in `cli/target/`, skills at repo root).
+fn find_skills_dir() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let real = exe.canonicalize().unwrap_or(exe);
+    let mut dir = real.parent();
+    while let Some(d) = dir {
+        let candidate = d.join("skills");
+        if candidate.join("agent-browser").join("SKILL.md").exists() {
+            return Some(candidate);
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+fn load_skills() -> Vec<(String, String)> {
+    let Some(skills_dir) = find_skills_dir() else {
+        return Vec::new();
+    };
+    SKILL_NAMES
+        .iter()
+        .filter_map(|name| {
+            let path = skills_dir.join(name).join("SKILL.md");
+            let content = std::fs::read_to_string(&path).ok()?;
+            Some((name.to_string(), content))
+        })
+        .collect()
+}
 
 fn strip_frontmatter(s: &str) -> &str {
     if !s.starts_with("---") {
@@ -87,16 +120,10 @@ fn strip_frontmatter(s: &str) -> &str {
 fn get_system_prompt() -> &'static str {
     static PROMPT: OnceLock<String> = OnceLock::new();
     PROMPT.get_or_init(|| {
-        let skills = [
-            ("agent-browser", SKILL_AGENT_BROWSER),
-            ("slack", SKILL_SLACK),
-            ("electron", SKILL_ELECTRON),
-            ("dogfood", SKILL_DOGFOOD),
-            ("agentcore", SKILL_AGENTCORE),
-        ];
+        let skills = load_skills();
 
         let mut sections = String::new();
-        for (name, content) in skills {
+        for (name, content) in &skills {
             let body = strip_frontmatter(content);
             sections.push_str(&format!("\n\n<skill name=\"{}\">\n{}\n</skill>", name, body.trim()));
         }
@@ -271,9 +298,19 @@ fn compress_image_to_jpeg(raw_bytes: &[u8]) -> Option<Vec<u8>> {
     Some(buf.into_inner())
 }
 
+fn has_image_extension(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg")
+}
+
 fn extract_image_path(text: &str) -> Option<String> {
     for line in text.lines() {
         let trimmed = line.trim();
+        // Whole line is a path (handles paths with spaces)
+        if has_image_extension(trimmed) && std::path::Path::new(trimmed).exists() {
+            return Some(trimmed.to_string());
+        }
+        // Last whitespace-delimited token ending in image extension
         for suffix in [".png", ".jpg", ".jpeg"] {
             if let Some(pos) = trimmed.to_lowercase().rfind(suffix) {
                 let end = pos + suffix.len();
@@ -494,6 +531,12 @@ fn shell_words_split(s: &str) -> Vec<String> {
 
     while let Some(c) = chars.next() {
         match c {
+            '\\' if !in_single => {
+                if let Some(&next) = chars.peek() {
+                    chars.next();
+                    current.push(next);
+                }
+            }
             '"' if !in_single => in_double = !in_double,
             '\'' if !in_double => in_single = !in_single,
             ' ' if !in_double && !in_single => {
@@ -813,7 +856,20 @@ pub(super) async fn handle_chat_request(stream: &mut tokio::net::TcpStream, body
         let _ = stream.write_all(ev.as_bytes()).await;
     }
 
+    let total_deadline =
+        tokio::time::Instant::now() + std::time::Duration::from_secs(300);
+    const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
     for _step in 0..50 {
+        if tokio::time::Instant::now() >= total_deadline {
+            let ev = format!(
+                "data: {}\n\n",
+                json!({"type":"error","errorText":"Chat session timed out (5 minute limit)."})
+            );
+            let _ = stream.write_all(ev.as_bytes()).await;
+            break;
+        }
+
         let step_ev = "data: {\"type\":\"start-step\"}\n\n";
         if stream.write_all(step_ev.as_bytes()).await.is_err() {
             return;
@@ -883,7 +939,15 @@ pub(super) async fn handle_chat_request(stream: &mut tokio::net::TcpStream, body
             );
             let _ = stream.write_all(ev.as_bytes()).await;
 
-            let result = execute_chat_tool(&session, command).await;
+            let result = match tokio::time::timeout(
+                TOOL_TIMEOUT,
+                execute_chat_tool(&session, command),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => "Tool execution timed out after 60 seconds.".to_string(),
+            };
 
             let frontend_output = enrich_tool_output(&result);
             let ev = format!(

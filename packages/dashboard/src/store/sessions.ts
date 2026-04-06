@@ -15,18 +15,10 @@ function getPort(): number {
   return p ? parseInt(p, 10) || 9223 : 9223;
 }
 
-const DASHBOARD_PORT = 4848;
-
 export const newSessionDialogAtom = atom(false);
 
 function getSessionsUrl(): string {
-  if (typeof window !== "undefined") {
-    const origin = window.location.origin;
-    if (origin.includes(`:${DASHBOARD_PORT}`)) {
-      return "/api/sessions";
-    }
-  }
-  return `http://localhost:${DASHBOARD_PORT}/api/sessions`;
+  return "/api/sessions";
 }
 
 // ---------------------------------------------------------------------------

@@ -5,36 +5,16 @@ import { useEffect } from "react";
 import { useAtomCallback } from "jotai/utils";
 import { useCallback } from "react";
 
-const DASHBOARD_PORT = 4848;
-
 function getChatStatusUrl(): string {
-  if (typeof window !== "undefined") {
-    const origin = window.location.origin;
-    if (origin.includes(`:${DASHBOARD_PORT}`)) {
-      return "/api/chat/status";
-    }
-  }
-  return `http://localhost:${DASHBOARD_PORT}/api/chat/status`;
+  return "/api/chat/status";
 }
 
 export function getChatApiUrl(): string {
-  if (typeof window !== "undefined") {
-    const origin = window.location.origin;
-    if (origin.includes(`:${DASHBOARD_PORT}`)) {
-      return "/api/chat";
-    }
-  }
-  return `http://localhost:${DASHBOARD_PORT}/api/chat`;
+  return "/api/chat";
 }
 
 export function getModelsApiUrl(): string {
-  if (typeof window !== "undefined") {
-    const origin = window.location.origin;
-    if (origin.includes(`:${DASHBOARD_PORT}`)) {
-      return "/api/models";
-    }
-  }
-  return `http://localhost:${DASHBOARD_PORT}/api/models`;
+  return "/api/models";
 }
 
 export interface ModelInfo {
