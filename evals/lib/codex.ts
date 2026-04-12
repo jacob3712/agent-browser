@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { homedir, tmpdir } from "os";
+import { tmpdir } from "os";
 import type { Provider, ProviderOptions, ProviderResponse } from "./types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,8 +37,13 @@ function buildPrompt(userTask: string, context?: string): string {
   return parts.join("\n");
 }
 
-function ensureConfig(model: string): void {
-  const configDir = join(homedir(), ".codex");
+let evalHome: string | null = null;
+
+function getEvalHome(model: string): string {
+  if (!evalHome) {
+    evalHome = join(tmpdir(), `agent-browser-evals-${process.pid}`);
+  }
+  const configDir = join(evalHome, ".codex");
   const configPath = join(configDir, "config.toml");
 
   const config = `model = "${model}"
@@ -55,9 +60,10 @@ wire_api = "responses"
     mkdirSync(configDir, { recursive: true });
   }
   writeFileSync(configPath, config, "utf-8");
+  return evalHome;
 }
 
-function getCodexEnv(): Record<string, string> {
+function getCodexEnv(model: string): Record<string, string> {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -66,6 +72,7 @@ function getCodexEnv(): Record<string, string> {
   }
   return {
     ...(process.env as Record<string, string>),
+    HOME: getEvalHome(model),
     AI_GATEWAY_API_KEY: apiKey,
   };
 }
@@ -99,6 +106,7 @@ function parseJsonlOutput(raw: string): string {
 
 function spawnCodex(
   prompt: string,
+  model: string,
   timeout: number,
 ): Promise<{ output: string; stderr: string; exitCode: number }> {
   const escaped = prompt.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -113,7 +121,7 @@ function spawnCodex(
     {
       stdout: "pipe",
       stderr: "pipe",
-      env: getCodexEnv(),
+      env: getCodexEnv(model),
     },
   );
 
@@ -143,12 +151,11 @@ export const codexProvider: Provider = {
     context?: string,
   ): Promise<ProviderResponse> {
     const { model = DEFAULT_MODEL, timeout = 120_000 } = options;
-    ensureConfig(model);
     const prompt = buildPrompt(userPrompt, context);
     const start = performance.now();
 
     try {
-      const result = await spawnCodex(prompt, timeout);
+      const result = await spawnCodex(prompt, model, timeout);
       const durationMs = Math.round(performance.now() - start);
 
       if (result.exitCode !== 0) {
@@ -173,11 +180,10 @@ export const codexProvider: Provider = {
     options: ProviderOptions = {},
   ): Promise<ProviderResponse> {
     const { model = DEFAULT_MODEL, timeout = 120_000 } = options;
-    ensureConfig(model);
     const start = performance.now();
 
     try {
-      const result = await spawnCodex(prompt, timeout);
+      const result = await spawnCodex(prompt, model, timeout);
       const durationMs = Math.round(performance.now() - start);
 
       if (result.exitCode !== 0) {
