@@ -1815,7 +1815,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
             state.update_stream_client().await;
         }
     } else {
-        try_load_storage_state(state, &storage_state_owned).await;
+        load_storage_state(state, &storage_state_owned).await?;
         return Ok(json!({ "launched": true, "reused": true }));
     }
     state.ref_map.clear();
@@ -1837,7 +1837,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.start_fetch_handler();
         state.start_dialog_handler();
         state.update_stream_client().await;
-        try_load_storage_state(state, &storage_state_owned).await;
+        load_storage_state(state, &storage_state_owned).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -1848,7 +1848,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.start_fetch_handler();
         state.start_dialog_handler();
         state.update_stream_client().await;
-        try_load_storage_state(state, &storage_state_owned).await;
+        load_storage_state(state, &storage_state_owned).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -1859,7 +1859,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         state.start_fetch_handler();
         state.start_dialog_handler();
         state.update_stream_client().await;
-        try_load_storage_state(state, &storage_state_owned).await;
+        load_storage_state(state, &storage_state_owned).await?;
         return Ok(json!({ "launched": true }));
     }
 
@@ -1896,7 +1896,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
                         state.start_dialog_handler();
                         state.update_stream_client().await;
                         write_provider_file(&state.session_id, provider);
-                        try_load_storage_state(state, &storage_state_owned).await;
+                        load_storage_state(state, &storage_state_owned).await?;
 
                         if let Some(info) = providers::get_agentcore_info() {
                             return Ok(json!({
