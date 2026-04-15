@@ -46,6 +46,54 @@ fn native_test_fixture_url(name: &str) -> String {
     )
 }
 
+async fn create_storage_state_with_cookie(path: &str, cookie_value: &str) {
+    let mut state = DaemonState::new();
+
+    let resp = execute_command(
+        &json!({
+            "id": "1",
+            "action": "launch",
+            "headless": true,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "2", "action": "navigate", "url": "https://example.com" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({
+            "id": "3",
+            "action": "cookies_set",
+            "name": "storage_reload_test",
+            "value": cookie_value,
+            "domain": ".example.com",
+            "path": "/",
+            "expires": 2000000000
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "state_save", "path": path }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(&json!({ "id": "5", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+}
+
 // ---------------------------------------------------------------------------
 // Core: launch, navigate, evaluate, url, title, close
 // ---------------------------------------------------------------------------
@@ -4320,6 +4368,107 @@ async fn e2e_state_flag_restores_cookies() {
     }
 
     let _ = std::fs::remove_file(&state_path);
+}
+
+/// Repeated launch calls on the same live session should apply a new
+/// `storageState` file without forcing a close/relaunch.
+#[tokio::test]
+#[ignore]
+async fn e2e_reused_launch_applies_updated_storage_state() {
+    let state_one = std::env::temp_dir()
+        .join(format!(
+            "agent-browser-e2e-storage-reuse-1-{}.json",
+            uuid::Uuid::new_v4()
+        ))
+        .to_string_lossy()
+        .to_string();
+    let state_two = std::env::temp_dir()
+        .join(format!(
+            "agent-browser-e2e-storage-reuse-2-{}.json",
+            uuid::Uuid::new_v4()
+        ))
+        .to_string_lossy()
+        .to_string();
+
+    create_storage_state_with_cookie(&state_one, "first").await;
+    create_storage_state_with_cookie(&state_two, "second").await;
+
+    let mut state = DaemonState::new();
+
+    let resp = execute_command(
+        &json!({
+            "id": "10",
+            "action": "launch",
+            "headless": true,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            "storageState": &state_one
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    assert!(
+        get_data(&resp).get("reused").is_none(),
+        "first launch must create the browser"
+    );
+
+    let resp = execute_command(
+        &json!({ "id": "11", "action": "navigate", "url": "https://example.com" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(&json!({ "id": "12", "action": "cookies_get" }), &mut state).await;
+    assert_success(&resp);
+    let cookies = get_data(&resp)["cookies"].as_array().unwrap();
+    assert!(
+        cookies
+            .iter()
+            .any(|c| c["name"] == "storage_reload_test" && c["value"] == "first"),
+        "first storageState should be applied on the initial launch"
+    );
+
+    let resp = execute_command(
+        &json!({
+            "id": "13",
+            "action": "launch",
+            "headless": true,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            "storageState": &state_two
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    assert_eq!(
+        get_data(&resp)["reused"],
+        true,
+        "storageState-only changes should reuse the existing browser"
+    );
+
+    let resp = execute_command(
+        &json!({ "id": "14", "action": "navigate", "url": "https://example.com" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(&json!({ "id": "15", "action": "cookies_get" }), &mut state).await;
+    assert_success(&resp);
+    let cookies = get_data(&resp)["cookies"].as_array().unwrap();
+    assert!(
+        cookies
+            .iter()
+            .any(|c| c["name"] == "storage_reload_test" && c["value"] == "second"),
+        "second storageState should replace the first one on a reused launch"
+    );
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+
+    let _ = std::fs::remove_file(&state_one);
+    let _ = std::fs::remove_file(&state_two);
 }
 
 /// Verify that AGENT_BROWSER_STATE env var restores cookies at auto-launch

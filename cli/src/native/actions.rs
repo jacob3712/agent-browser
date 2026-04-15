@@ -1805,6 +1805,7 @@ async fn handle_launch(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
             state.update_stream_client().await;
         }
     } else {
+        try_load_storage_state(state, &storage_state_owned).await;
         return Ok(json!({ "launched": true, "reused": true }));
     }
     state.ref_map.clear();
