@@ -4426,7 +4426,10 @@ async fn e2e_state_env_restores_cookies_on_auto_launch() {
 #[tokio::test]
 #[ignore]
 async fn e2e_session_name_auto_restores_cookies() {
-    let session_name = format!("e2e-session-name-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let session_name = format!(
+        "e2e-session-name-{}",
+        &uuid::Uuid::new_v4().to_string()[..8]
+    );
 
     let env = EnvGuard::new(&["AGENT_BROWSER_SESSION_NAME"]);
     env.set("AGENT_BROWSER_SESSION_NAME", &session_name);
