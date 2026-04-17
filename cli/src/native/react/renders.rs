@@ -80,9 +80,6 @@ pub fn format_renders_report(d: &RendersData) -> String {
     let top: Vec<&Component> = d.components.iter().take(50).collect();
     let name_w = top.iter().map(|c| c.name.len()).max().unwrap_or(9).max(9);
 
-    let fmt = |name: &str, s: String| format!("{:<width$}", s, width = name.len().max(name_w));
-    let _ = fmt;
-
     lines.push(format!(
         "| {:<name_w$} | Insts | Mounts | Re-renders | Total    | Self     | DOM   | Top change reason          |",
         "Component",

@@ -4730,7 +4730,6 @@ async fn handle_removeinitscript(cmd: &Value, state: &DaemonState) -> Result<Val
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
     let identifier = cmd
         .get("identifier")
-        .or_else(|| cmd.get("id"))
         .and_then(|v| v.as_str())
         .ok_or("Missing 'identifier' parameter")?;
     mgr.remove_script_to_evaluate(identifier).await?;
@@ -4890,6 +4889,11 @@ async fn handle_vitals(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
     let mut hydration_start = f64::INFINITY;
     let mut hydration_end = 0.0f64;
     let mut hydrated_components: Vec<Value> = Vec::new();
+    // React's profiling build emits `console.timeStamp(label, start, end,
+    // track, trackGroup, color)` entries whose `track` / `trackGroup`
+    // fields are literal strings containing the atom glyph (e.g.
+    // "Scheduler ⚛", "Components ⚛"). The comparisons below match those
+    // exact strings — don't "clean up" the glyphs.
     for e in &timing {
         let label = e.get("label").and_then(|v| v.as_str()).unwrap_or("");
         let track = e.get("track").and_then(|v| v.as_str()).unwrap_or("");

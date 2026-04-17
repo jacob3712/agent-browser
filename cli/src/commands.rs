@@ -2798,10 +2798,41 @@ mod tests {
 
     #[test]
     fn test_parse_curl_cookies_never_echoes_values_in_errors() {
-        // An invalid bare header should error on "no cookies found in input"
-        // without including any of the input bytes.
-        let err = parse_curl_cookies("-").unwrap_err();
-        assert!(!err.contains("-"));
+        // Error messages must never echo cookie values or any bytes from the
+        // input that could be a secret. Use a distinct recognizable token per
+        // case so a regression surfaces the leaking code path clearly.
+
+        // JSON array with a missing `name` field.
+        let name_secret = "LEAK_VIA_MISSING_NAME_xY9zQ";
+        let input = format!(r#"[{{"value":"{}"}}]"#, name_secret);
+        let err = parse_curl_cookies(&input).unwrap_err();
+        assert!(
+            !err.contains(name_secret),
+            "missing-name error leaked secret value: {}",
+            err
+        );
+
+        // Truncated / malformed JSON containing a secret. Depends on
+        // serde_json's Display impl to report position only, not payload.
+        let parse_secret = "LEAK_VIA_JSON_PARSE_aA1bB2";
+        let input = format!(r#"[{{"name":"sid","value":"{}"#, parse_secret);
+        let err = parse_curl_cookies(&input).unwrap_err();
+        assert!(
+            !err.contains(parse_secret),
+            "malformed-JSON error leaked secret value: {}",
+            err
+        );
+
+        // Valid cURL dump with no Cookie header but a secret in another
+        // header. Should error on "no Cookie header found" without echoing.
+        let curl_secret = "LEAK_VIA_CURL_NO_COOKIE_pP7qQ";
+        let input = format!("curl 'https://example.com/' -H 'x-token: {}'", curl_secret);
+        let err = parse_curl_cookies(&input).unwrap_err();
+        assert!(
+            !err.contains(curl_secret),
+            "cURL-without-cookie error leaked secret value: {}",
+            err
+        );
     }
 
     #[test]
