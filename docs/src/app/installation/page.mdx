@@ -29,6 +29,16 @@ npx agent-browser install  # Download Chrome (first time)
 
 Then use via `npx` or `package.json` scripts.
 
+## Vendor into another project
+
+To copy this repository into an existing project:
+
+```bash
+./scripts/setup-for-project.sh /path/to/your-project
+```
+
+This copies `agent-browser` into `tools/agent-browser` inside the target project, reuses the current native binary when available, and then tries to install Chrome. See `README-USER.md` in the repository root for the simple end-user flow.
+
 ## Homebrew (macOS)
 
 ```bash

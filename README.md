@@ -24,6 +24,16 @@ agent-browser install
 
 Then use via `package.json` scripts or by invoking `agent-browser` directly.
 
+### Vendor into Another Project
+
+To copy this repository into an existing project:
+
+```bash
+./scripts/setup-for-project.sh /path/to/your-project
+```
+
+This copies `agent-browser` into `tools/agent-browser` inside the target project, reuses the current native binary when available, and then tries to install Chrome. See [`README-USER.md`](README-USER.md) for the simple end-user flow.
+
 ### Homebrew (macOS)
 
 ```bash

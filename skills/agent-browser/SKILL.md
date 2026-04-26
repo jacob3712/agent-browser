@@ -7,8 +7,7 @@ hidden: true
 
 # agent-browser
 
-Fast browser automation CLI for AI agents. Chrome/Chromium via CDP with
-accessibility-tree snapshots and compact `@eN` element refs.
+The CLI uses Chrome/Chromium via CDP directly. Install via `npm i -g agent-browser`, `brew install agent-browser`, or `cargo install agent-browser`. Run `agent-browser install` to download Chrome. Existing Chrome, Brave, Playwright, and Puppeteer installations are detected automatically. Run `agent-browser upgrade` to update to the latest version. To vendor this repository into another project, run `./scripts/setup-for-project.sh /path/to/project` from an `agent-browser` checkout.
 
 Install: `npm i -g agent-browser && agent-browser install`
 
